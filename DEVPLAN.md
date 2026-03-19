@@ -64,6 +64,22 @@ Output (extracted text): negligible cost. Total per-image cost is essentially ze
 - [ ] Verify `kiso tool install ocr` works end-to-end (needs Docker + VPS)
 - [ ] Live test: send photo via Discord → OCR text appears in response
 
+## M5 — Security + robustness fixes (code review)
+
+**Path traversal prefix attack (CRITICAL):**
+- [ ] `run.py:_resolve_path()` — replace `str(resolved).startswith(str(ws_resolved))` with `resolved.relative_to(ws_resolved)`
+
+**JSON input safety:**
+- [ ] Wrap `json.load(sys.stdin)` in try-except JSONDecodeError — print clean error + exit 1
+
+**do_describe test coverage:**
+- [ ] Add tests: missing file, file too large, API error, missing file_path arg (currently only 1 test)
+
+**Tests to add:**
+- [ ] Path traversal lateral escape (`../sibling-dir/file.txt`)
+- [ ] Malformed JSON stdin
+- [ ] `uv run pytest tests/ -q` passes
+
 ## Known Issues
 
 - No support for multi-page TIFF (only first frame processed)
