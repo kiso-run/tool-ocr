@@ -1,0 +1,13 @@
+[project]
+name = "tool-ocr"
+version = "0.1.0"
+description = "Extract text from images via Gemini multimodal OCR"
+requires-python = ">=3.11"
+dependencies = ["httpx>=0.27"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

@@ -1,0 +1,30 @@
+[kiso]
+type = "tool"
+name = "ocr"
+version = "0.1.0"
+description = "Extract text from images — photos, screenshots, scanned documents, whiteboards"
+
+[kiso.tool]
+summary = "Extract text from images via OCR — photos, screenshots, receipts, whiteboards, handwriting"
+usage_guide = """\
+Use this tool to extract text from image files. Supports all common image formats \
+(PNG, JPG, WEBP, GIF, BMP, TIFF). Images are typically found in the uploads/ \
+directory (placed there by connectors when users send photos).
+
+Actions:
+  extract  — extract text from an image (default). Returns the OCR result.
+  describe — describe the image content (what's in the photo, layout, visual elements).
+  info     — show image metadata (format, dimensions, size) without processing.
+  list     — list image files in uploads/ directory.
+
+For multi-page scanned PDFs, convert pages to images first (e.g. exec 'pdftoppm doc.pdf page -png') \
+then use this tool on each page image.
+
+The file_path arg is relative to the session workspace (e.g. "uploads/photo.jpg")."""
+
+[kiso.tool.args]
+action    = { type = "string", required = false, description = "one of: extract (default), describe, info, list" }
+file_path = { type = "string", required = false, description = "path to image file, relative to workspace" }
+
+[kiso.deps]
+python = ">=3.11"
