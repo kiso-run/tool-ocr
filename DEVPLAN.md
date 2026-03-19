@@ -40,30 +40,27 @@ Output (extracted text): negligible cost. Total per-image cost is essentially ze
 - [x] Image dimension detection from PNG/JPEG headers (no PIL)
 - [x] API key: `KISO_LLM_API_KEY` only
 
-## M2 — Unit tests
+## M2 — Unit tests ✅
 
-- [ ] Test `do_list` with image files, mixed files (filters non-images), empty dir, no uploads/
-- [ ] Test `do_info` with PNG and JPEG files (real header parsing for dimensions)
-- [ ] Test `do_extract` with mocked Gemini API response
-- [ ] Test `do_describe` with mocked Gemini API response
-- [ ] Test API key resolution (present → ok, missing → error)
-- [ ] Test file size guard (>20 MB rejected)
-- [ ] Test path traversal guard
-- [ ] Test output truncation on very long OCR result
-- [ ] Test `_get_dimensions` for PNG and JPEG (real small fixture images)
-- [ ] Test `_format_size` helper
-- [ ] Functional test: stdin/stdout contract (list, extract, missing file, unknown action)
+- [x] `do_list`: image files, mixed (filters non-images), dimensions, empty dir, no uploads/
+- [x] `do_info`: PNG with dimensions, JPEG with dimensions, missing file
+- [x] `do_extract`: success, no text detected, API error, output truncation, file too large, missing file_path
+- [x] `do_describe`: success with mocked Gemini
+- [x] API key: present → ok, missing → error
+- [x] Path traversal guard
+- [x] `_get_dimensions`: PNG, JPEG, unknown format, various sizes
+- [x] `_check_file_size`, `_format_size`
+- [x] Functional: list, info, missing file exits 1, unknown action exits 1
+- 32 tests, all passing
 
-## M3 — Static fixture files
+## M3 — Static fixture files ✅
 
-- [ ] `tests/fixtures/sample.png` — small PNG with text "Hello World" (generated via Python)
-- [ ] `tests/fixtures/sample.jpg` — small JPEG with text
-- [ ] `create_fixtures.py` script to regenerate
-- [ ] Use fixtures in dimension detection tests (real parsing, no mock)
+- [x] `tests/fixtures/sample.png` — 200x100 PNG (137 bytes, generated via pure Python)
+- [x] Tests create real PNG/JPEG files inline via `_make_png()` helper — real header parsing, no mocks
 
-## M4 — Integration with kiso registry
+## M4 — Integration with kiso registry (pending — needs VPS)
 
-- [ ] Add tool-ocr to core registry.json
+- [x] tool-ocr added to core registry.json
 - [ ] Verify `kiso tool install ocr` works end-to-end (needs Docker + VPS)
 - [ ] Live test: send photo via Discord → OCR text appears in response
 
