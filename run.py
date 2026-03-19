@@ -43,7 +43,11 @@ _DESCRIBE_PROMPT = (
 
 
 def main() -> None:
-    data = json.load(sys.stdin)
+    try:
+        data = json.load(sys.stdin)
+    except json.JSONDecodeError as e:
+        print(f"Invalid JSON input: {e}", file=sys.stderr)
+        sys.exit(1)
     args = data.get("args", {})
     workspace = data.get("workspace", ".")
 
@@ -237,7 +241,9 @@ def _resolve_path(workspace: str, args: dict) -> Path:
         raise ValueError("file_path argument is required for extract/describe/info actions")
     resolved = (Path(workspace) / file_path).resolve()
     ws_resolved = Path(workspace).resolve()
-    if not str(resolved).startswith(str(ws_resolved)):
+    try:
+        resolved.relative_to(ws_resolved)
+    except ValueError:
         raise ValueError(f"Path traversal denied: {file_path}")
     if not resolved.is_file():
         raise FileNotFoundError(resolved.name)

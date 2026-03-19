@@ -223,6 +223,31 @@ class TestDoDescribe:
         assert "Description: screenshot.png" in result
         assert "code editor" in result
 
+    def test_describe_missing_file(self, workspace):
+        with pytest.raises(FileNotFoundError):
+            do_describe(str(workspace), {"file_path": "uploads/nope.png"})
+
+    def test_describe_file_too_large(self, workspace):
+        big = workspace / "uploads" / "huge.png"
+        big.write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * (_MAX_FILE_SIZE + 1))
+        with pytest.raises(ValueError, match="too large"):
+            do_describe(str(workspace), {"file_path": "uploads/huge.png"})
+
+    def test_describe_api_error(self, workspace, png_file):
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal error"
+        with (
+            patch("run._get_api_key", return_value="sk-test"),
+            patch("httpx.post", return_value=mock_response),
+        ):
+            with pytest.raises(RuntimeError, match="500"):
+                do_describe(str(workspace), {"file_path": "uploads/screenshot.png"})
+
+    def test_describe_missing_file_path(self, workspace):
+        with pytest.raises(ValueError, match="file_path"):
+            do_describe(str(workspace), {})
+
 
 # ---------------------------------------------------------------------------
 # API key
@@ -253,6 +278,17 @@ class TestPathTraversal:
     def test_valid_path(self, workspace, png_file):
         result = _resolve_path(str(workspace), {"file_path": "uploads/screenshot.png"})
         assert result.name == "screenshot.png"
+
+    def test_traversal_lateral_escape(self, tmp_path):
+        """Sibling directory escape via prefix attack."""
+        workspace = tmp_path / "workspace"
+        workspace.mkdir()
+        sibling = tmp_path / "workspace-data"
+        sibling.mkdir()
+        secret = sibling / "file.png"
+        secret.write_bytes(b"\x89PNG" + b"\x00" * 100)
+        with pytest.raises(ValueError, match="traversal"):
+            _resolve_path(str(workspace), {"file_path": "../workspace-data/file.png"})
 
 
 # ---------------------------------------------------------------------------
@@ -362,3 +398,13 @@ class TestFunctional:
         )
         assert result.returncode == 1
         assert "unknown" in result.stderr.lower()
+
+    def test_malformed_json_stdin(self, workspace):
+        """Malformed JSON input → exit 1, stderr contains error."""
+        result = subprocess.run(
+            [sys.executable, "run.py"],
+            input="not json", capture_output=True, text=True,
+            cwd=str(Path(__file__).parent.parent),
+        )
+        assert result.returncode == 1
+        assert "invalid json" in result.stderr.lower() or "json" in result.stderr.lower()
