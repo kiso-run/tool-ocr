@@ -6,6 +6,7 @@ description = "Extract text from images — photos, screenshots, scanned documen
 
 [kiso.tool]
 summary = "Extract text from images via OCR — photos, screenshots, receipts, whiteboards, handwriting"
+consumes = ["image"]
 usage_guide = """\
 Use this tool to extract text from image files. Supports all common image formats \
 (PNG, JPG, WEBP, GIF, BMP, TIFF). Images are typically found in the uploads/ \

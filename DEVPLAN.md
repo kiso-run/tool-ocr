@@ -86,3 +86,15 @@ Output (extracted text): negligible cost. Total per-image cost is essentially ze
 - Very low resolution images (<100px) may produce poor OCR results
 - Handwriting recognition quality depends on legibility — Gemini is good but not perfect
 - For scanned PDFs: docreader handles the PDF format; if no text extractable, it suggests using OCR after converting pages to images
+
+---
+
+### M6 — Declare `consumes` in kiso.toml (core M826)
+
+**Context:** Core M826 adds a `consumes` field to `[kiso.tool]` in kiso.toml. The planner uses
+this to auto-route session workspace files to the right tool. Vocabulary: `image`, `document`,
+`audio`, `video`, `code`, `web_page`.
+
+**Changes:**
+- [x] Add `consumes = ["image"]` to `[kiso.tool]` in kiso.toml
+- [ ] Enrich `usage_guide` with concrete arg examples and supported formats list
