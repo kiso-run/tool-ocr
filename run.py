@@ -19,12 +19,15 @@ import mimetypes
 import os
 import signal
 import sys
+import time
 from pathlib import Path
 
 signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
 _MAX_OUTPUT_CHARS = 50_000
 _MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB — Gemini inline image limit
+_EMPTY_RETRIES = 2  # retry up to 2 times on empty API response
+_RETRY_BACKOFF = (1, 2)  # seconds between retries
 
 _IMAGE_EXTENSIONS = frozenset({
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif",
@@ -205,28 +208,34 @@ def _call_gemini(file_path: Path, api_key: str, prompt: str) -> str:
             },
         ],
         "max_tokens": 4096,
+        "temperature": 0,
     }
 
-    response = httpx.post(
-        url,
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=120,
-    )
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
 
-    if response.status_code != 200:
-        raise RuntimeError(
-            f"Gemini API error ({response.status_code}): {response.text[:500]}"
-        )
+    for attempt in range(_EMPTY_RETRIES + 1):
+        response = httpx.post(url, headers=headers, json=payload, timeout=120)
 
-    result = response.json()
-    choices = result.get("choices", [])
-    if not choices:
-        return ""
-    return choices[0].get("message", {}).get("content", "")
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Gemini API error ({response.status_code}): {response.text[:500]}"
+            )
+
+        result = response.json()
+        choices = result.get("choices", [])
+        content = choices[0].get("message", {}).get("content", "") if choices else ""
+
+        if content.strip():
+            return content
+
+        # Empty response — retry with backoff if attempts remain
+        if attempt < _EMPTY_RETRIES:
+            time.sleep(_RETRY_BACKOFF[attempt])
+
+    return ""
 
 
 # ---------------------------------------------------------------------------

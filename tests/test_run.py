@@ -153,7 +153,8 @@ class TestDoExtract:
         assert "Hello World" in result
         assert "Line 2" in result
 
-    def test_extract_no_text(self, workspace, png_file):
+    def test_extract_no_text_after_retries(self, workspace, png_file):
+        """Empty response on all attempts (1 + 2 retries) → 'No text detected'."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
@@ -162,9 +163,29 @@ class TestDoExtract:
         with (
             patch("run._get_api_key", return_value="sk-test"),
             patch("httpx.post", return_value=mock_response),
+            patch("run.time.sleep"),
         ):
             result = do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
         assert "No text detected" in result
+
+    def test_extract_retry_succeeds(self, workspace, png_file):
+        """Empty response on first call, success on retry."""
+        empty = MagicMock()
+        empty.status_code = 200
+        empty.json.return_value = {"choices": [{"message": {"content": ""}}]}
+
+        success = MagicMock()
+        success.status_code = 200
+        success.json.return_value = {
+            "choices": [{"message": {"content": "Extracted text"}}],
+        }
+        with (
+            patch("run._get_api_key", return_value="sk-test"),
+            patch("httpx.post", side_effect=[empty, success]),
+            patch("run.time.sleep"),
+        ):
+            result = do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
+        assert "Extracted text" in result
 
     def test_extract_api_error(self, workspace, png_file):
         mock_response = MagicMock()
