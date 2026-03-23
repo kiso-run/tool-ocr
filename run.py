@@ -231,6 +231,16 @@ def _call_gemini(file_path: Path, api_key: str, prompt: str) -> str:
         if content.strip():
             return content
 
+        # Log diagnostic info for empty responses
+        _diag = {
+            "attempt": attempt + 1,
+            "model": result.get("model", "?"),
+            "choices_len": len(choices),
+            "finish_reason": choices[0].get("finish_reason") if choices else None,
+            "usage": result.get("usage"),
+        }
+        print(f"[ocr-diag] Empty response: {_diag}", file=sys.stderr)
+
         # Empty response — retry with backoff if attempts remain
         if attempt < _EMPTY_RETRIES:
             time.sleep(_RETRY_BACKOFF[attempt])
