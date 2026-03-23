@@ -98,3 +98,28 @@ this to auto-route session workspace files to the right tool. Vocabulary: `image
 **Changes:**
 - [x] Add `consumes = ["image"]` to `[kiso.tool]` in kiso.toml
 - [ ] Enrich `usage_guide` with concrete arg examples and supported formats list
+
+---
+
+### M7 — Switch model from gemini-2.5-flash-lite to gemini-2.5-flash
+
+**Problem:** `_call_gemini()` uses `google/gemini-2.5-flash-lite`
+which consistently returns empty text for simple screenshots (e.g.
+example.com). The lite variant is too weak for vision/OCR tasks.
+Even with temperature:0 and retry (M916), the API returns empty
+on all attempts.
+
+Gemini 2.5 Flash (non-lite) has proven OCR capabilities — widely
+used for document processing, receipt scanning, handwriting
+extraction. Cost difference is negligible at ~260 tokens/image.
+
+**Approach:** Change the model string in `_call_gemini()` from
+`google/gemini-2.5-flash-lite` to `google/gemini-2.5-flash`.
+
+**Files:** `run.py`, `tests/test_run.py`
+
+**Tasks:**
+- [ ] Change model from `google/gemini-2.5-flash-lite` to
+  `google/gemini-2.5-flash` in `_call_gemini`
+- [ ] Update DEVPLAN.md architecture section (model reference)
+- [ ] Update any test assertions that check model name
