@@ -189,7 +189,7 @@ def _call_gemini(file_path: Path, api_key: str, prompt: str) -> str:
     mime_type = mimetypes.guess_type(str(file_path))[0] or "image/png"
 
     payload = {
-        "model": "google/gemini-2.5-flash-lite",
+        "model": "google/gemini-2.5-flash",
         "messages": [
             {
                 "role": "user",

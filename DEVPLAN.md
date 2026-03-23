@@ -10,7 +10,7 @@ stdin (JSON) → run.py → resolve image → base64 → Gemini chat (vision) �
 
 - **Entry point**: `run.py` reads JSON from stdin, dispatches to action handler
 - **Actions**: `extract` (default), `describe`, `info`, `list`
-- **API**: Gemini 2.5 Flash Lite via OpenRouter `/chat/completions` (image as base64 inline content)
+- **API**: Gemini 2.5 Flash via OpenRouter `/chat/completions` (image as base64 inline content)
 - **API key**: reuses `KISO_LLM_API_KEY` — zero extra config
 - **No system deps**: pure Python + httpx, no Tesseract/OpenCV/etc.
 - **Image dimensions**: parsed from PNG/JPEG headers (no PIL dependency)
@@ -101,7 +101,7 @@ this to auto-route session workspace files to the right tool. Vocabulary: `image
 
 ---
 
-### M7 — Switch model from gemini-2.5-flash-lite to gemini-2.5-flash
+### M7 — Switch model from gemini-2.5-flash-lite to gemini-2.5-flash ✅
 
 **Problem:** `_call_gemini()` uses `google/gemini-2.5-flash-lite`
 which consistently returns empty text for simple screenshots (e.g.
@@ -119,7 +119,7 @@ extraction. Cost difference is negligible at ~260 tokens/image.
 **Files:** `run.py`, `tests/test_run.py`
 
 **Tasks:**
-- [ ] Change model from `google/gemini-2.5-flash-lite` to
+- [x] Change model from `google/gemini-2.5-flash-lite` to
   `google/gemini-2.5-flash` in `_call_gemini`
-- [ ] Update DEVPLAN.md architecture section (model reference)
-- [ ] Update any test assertions that check model name
+- [x] Update DEVPLAN.md architecture section (model reference)
+- [x] No test assertions check model name — tests mock httpx.post
