@@ -126,7 +126,7 @@ extraction. Cost difference is negligible at ~260 tokens/image.
 
 ---
 
-### M8 — Disable thinking for gemini-2.5-flash
+### M8 — Disable thinking for gemini-2.5-flash ✅
 
 **Problem:** gemini-2.5-flash has built-in thinking that consumes
 max_tokens, leaving content empty for OCR responses.
@@ -137,13 +137,12 @@ M8 first attempt used `"reasoning": {"effort": "none"}` — but
 stayed active, and OCR kept returning empty.
 
 **Approach:** Change to `"reasoning": {"effort": "low"}` which
-uses only ~20% of max_tokens for reasoning, preserving ~3200 tokens
-for actual content. For a simple OCR task this is more than enough.
-Also increase max_tokens from 4096 to 8192 as safety margin.
+uses only ~20% of max_tokens for reasoning, preserving ~6500+ tokens
+for actual content. Also increase max_tokens from 4096 to 8192.
 
 **Files:** `run.py`
 
 **Tasks:**
 - [x] ~~Add reasoning effort none~~ (invalid, reverted)
-- [ ] Change to `"reasoning": {"effort": "low"}`
-- [ ] Increase max_tokens from 4096 to 8192
+- [x] Change to `"reasoning": {"effort": "low"}`
+- [x] Increase max_tokens from 4096 to 8192
