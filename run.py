@@ -209,6 +209,7 @@ def _call_gemini(file_path: Path, api_key: str, prompt: str) -> str:
         ],
         "max_tokens": 4096,
         "temperature": 0,
+        "reasoning": {"effort": "none"},
     }
 
     headers = {

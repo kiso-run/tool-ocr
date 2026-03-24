@@ -123,3 +123,15 @@ extraction. Cost difference is negligible at ~260 tokens/image.
   `google/gemini-2.5-flash` in `_call_gemini`
 - [x] Update DEVPLAN.md architecture section (model reference)
 - [x] No test assertions check model name — tests mock httpx.post
+
+---
+
+### M8 — Disable thinking for gemini-2.5-flash ✅
+
+**Problem:** gemini-2.5-flash has built-in thinking that consumes
+max_tokens, leaving content empty for OCR responses.
+
+**Approach:** Add `"reasoning": {"effort": "none"}` to payload.
+
+**Tasks:**
+- [x] Add reasoning effort none to payload in `_call_gemini`
