@@ -25,7 +25,7 @@ The file_path arg is relative to the session workspace (e.g. "uploads/photo.jpg"
 
 [kiso.tool.args]
 action    = { type = "string", required = false, description = "one of: extract (default), describe, info, list" }
-file_path = { type = "string", required = false, description = "path to image file, relative to workspace" }
+file_path = { type = "string", required = true, description = "path to image file, relative to workspace" }
 
 [kiso.deps]
 python = ">=3.11"

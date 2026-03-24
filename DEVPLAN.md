@@ -149,7 +149,7 @@ for actual content. Also increase max_tokens from 4096 to 8192.
 
 ---
 
-### M9 — Mark file_path as required in schema
+### M9 — Mark file_path as required in schema ✅
 
 **Problem:** `kiso.toml` declares `file_path` as `required = false`
 but the tool code requires it for 3/4 actions (extract, describe,
@@ -167,4 +167,4 @@ and the tool code handles absent file_path for list internally.
 **Files:** `kiso.toml`
 
 **Tasks:**
-- [ ] Change `file_path` to `required = true` in kiso.toml
+- [x] Change `file_path` to `required = true` in kiso.toml
