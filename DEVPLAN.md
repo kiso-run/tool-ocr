@@ -146,3 +146,25 @@ for actual content. Also increase max_tokens from 4096 to 8192.
 - [x] ~~Add reasoning effort none~~ (invalid, reverted)
 - [x] Change to `"reasoning": {"effort": "low"}`
 - [x] Increase max_tokens from 4096 to 8192
+
+---
+
+### M9 — Mark file_path as required in schema
+
+**Problem:** `kiso.toml` declares `file_path` as `required = false`
+but the tool code requires it for 3/4 actions (extract, describe,
+info). The planner sees "optional" and omits it → tool fails at
+runtime with "file_path argument is required".
+
+The validation in brain.py checks the schema and passes because
+the schema says optional. The error only surfaces at execution time.
+
+**Approach:** Change `required = false` to `required = true` in
+kiso.toml. The default action (extract) requires it. The `list`
+action doesn't use it, but list is rarely called by the planner
+and the tool code handles absent file_path for list internally.
+
+**Files:** `kiso.toml`
+
+**Tasks:**
+- [ ] Change `file_path` to `required = true` in kiso.toml
