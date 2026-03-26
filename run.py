@@ -20,12 +20,24 @@ import os
 import signal
 import sys
 import time
+import unicodedata
 from pathlib import Path
 
 signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
 _MAX_OUTPUT_CHARS = 50_000
 _MAX_FILE_SIZE = 20 * 1024 * 1024  # 20 MB — Gemini inline image limit
+
+
+def _has_meaningful_content(text: str, min_chars: int = 3) -> bool:
+    """Check if text has at least *min_chars* printable characters.
+
+    Counts Unicode letters (L*), numbers (N*), and punctuation (P*).
+    Zero-width characters (U+200B, U+FEFF, etc.) are category Cf and
+    are NOT counted, so invisible-only text returns False.
+    """
+    count = sum(1 for c in text if unicodedata.category(c)[0] in ("L", "N", "P"))
+    return count >= min_chars
 _EMPTY_RETRIES = 2  # retry up to 2 times on empty API response
 _RETRY_BACKOFF = (1, 2)  # seconds between retries
 
@@ -132,7 +144,7 @@ def do_extract(workspace: str, args: dict) -> str:
     if dims:
         header += f" ({dims[0]}x{dims[1]})"
 
-    if not text.strip():
+    if not _has_meaningful_content(text):
         return f"{header}\nNo text detected in image."
 
     if len(text) > _MAX_OUTPUT_CHARS:
@@ -229,7 +241,7 @@ def _call_gemini(file_path: Path, api_key: str, prompt: str) -> str:
         choices = result.get("choices", [])
         content = choices[0].get("message", {}).get("content", "") if choices else ""
 
-        if content.strip():
+        if _has_meaningful_content(content):
             return content
 
         # Log diagnostic info for empty responses

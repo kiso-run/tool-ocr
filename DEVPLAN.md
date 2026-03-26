@@ -171,7 +171,7 @@ and the tool code handles absent file_path for list internally.
 
 ---
 
-### M10 — Empty OCR from zero-width Unicode (core M960)
+### M10 — Empty OCR from zero-width Unicode (core M960) ✅
 
 **Problem:** Gemini sometimes returns only invisible Unicode characters
 (U+200B zero-width space, U+FEFF BOM, U+200E LTR mark, etc.) as OCR
@@ -208,11 +208,11 @@ vs letting invisible text through.
 **Files:** `run.py`
 
 **Tasks:**
-- [ ] Add `_has_meaningful_content(text, min_chars=3)` helper
-- [ ] Replace `content.strip()` in `_call_gemini` retry (line ~232)
+- [x] Add `_has_meaningful_content(text, min_chars=3)` helper
+- [x] Replace `content.strip()` in `_call_gemini` retry (line ~232)
       with `_has_meaningful_content(content)`
-- [ ] Replace `not text.strip()` in `do_extract` (line ~135) with
+- [x] Replace `not text.strip()` in `do_extract` (line ~135) with
       `not _has_meaningful_content(text)`
-- [ ] Unit test: zero-width chars (U+200B, U+FEFF) trigger retry
-- [ ] Unit test: "EXIT" (4 chars) passes without retry
-- [ ] Unit test: empty string returns "No text detected"
+- [x] Unit test: zero-width chars (U+200B, U+FEFF) trigger retry
+- [x] Unit test: "EXIT" (4 chars) passes without retry
+- [x] Unit test: empty string returns "No text detected"

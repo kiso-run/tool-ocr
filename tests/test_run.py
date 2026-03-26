@@ -12,7 +12,7 @@ import pytest
 from run import (
     do_list, do_info, do_extract, do_describe,
     _resolve_path, _get_dimensions, _format_size, _check_file_size,
-    _get_api_key, _MAX_OUTPUT_CHARS, _MAX_FILE_SIZE,
+    _get_api_key, _has_meaningful_content, _MAX_OUTPUT_CHARS, _MAX_FILE_SIZE,
 )
 
 
@@ -186,6 +186,40 @@ class TestDoExtract:
         ):
             result = do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
         assert "Extracted text" in result
+
+    def test_extract_zero_width_unicode_triggers_retry(self, workspace, png_file):
+        """M10: zero-width Unicode chars trigger retry, not accepted as content."""
+        zwsp = "\u200b\u200c\ufeff"  # zero-width space, non-joiner, BOM
+        empty_zw = MagicMock()
+        empty_zw.status_code = 200
+        empty_zw.json.return_value = {"choices": [{"message": {"content": zwsp}}]}
+
+        success = MagicMock()
+        success.status_code = 200
+        success.json.return_value = {
+            "choices": [{"message": {"content": "Extracted text from image"}}],
+        }
+        with (
+            patch("run._get_api_key", return_value="sk-test"),
+            patch("httpx.post", side_effect=[empty_zw, success]),
+            patch("run.time.sleep"),
+        ):
+            result = do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
+        assert "Extracted text" in result
+
+    def test_extract_zero_width_all_retries_exhausted(self, workspace, png_file):
+        """M10: if all retries return zero-width only, 'No text detected'."""
+        zwsp = "\u200b"
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"choices": [{"message": {"content": zwsp}}]}
+        with (
+            patch("run._get_api_key", return_value="sk-test"),
+            patch("httpx.post", return_value=mock_response),
+            patch("run.time.sleep"),
+        ):
+            result = do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
+        assert "No text detected" in result
 
     def test_extract_api_error(self, workspace, png_file):
         mock_response = MagicMock()
@@ -429,3 +463,34 @@ class TestFunctional:
         )
         assert result.returncode == 1
         assert "invalid json" in result.stderr.lower() or "json" in result.stderr.lower()
+
+
+class TestHasMeaningfulContent:
+    """M10: _has_meaningful_content detects invisible Unicode."""
+
+    def test_empty_string(self):
+        assert not _has_meaningful_content("")
+
+    def test_zero_width_only(self):
+        assert not _has_meaningful_content("\u200b\u200c\ufeff")
+
+    def test_whitespace_only(self):
+        assert not _has_meaningful_content("   \n\t  ")
+
+    def test_exit_passes(self):
+        """4-letter word passes default threshold of 3."""
+        assert _has_meaningful_content("EXIT")
+
+    def test_real_ocr_text(self):
+        assert _has_meaningful_content("Example Domain — This domain is for use in documentation.")
+
+    def test_cjk_characters(self):
+        """Chinese characters are category Lo — counted correctly."""
+        assert _has_meaningful_content("你好世界")
+
+    def test_two_char_word_fails_threshold_3(self):
+        """2-char words are below default threshold 3 — triggers retry."""
+        assert not _has_meaningful_content("OK")
+
+    def test_custom_threshold(self):
+        assert _has_meaningful_content("OK", min_chars=2)
