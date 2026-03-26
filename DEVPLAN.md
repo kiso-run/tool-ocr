@@ -168,3 +168,51 @@ and the tool code handles absent file_path for list internally.
 
 **Tasks:**
 - [x] Change `file_path` to `required = true` in kiso.toml
+
+---
+
+### M10 — Empty OCR from zero-width Unicode (core M960)
+
+**Problem:** Gemini sometimes returns only invisible Unicode characters
+(U+200B zero-width space, U+FEFF BOM, U+200E LTR mark, etc.) as OCR
+output.  Python's `str.strip()` considers them non-empty, so:
+- `_call_gemini` retry check `content.strip()` passes → no retry
+- `do_extract` empty check `not text.strip()` passes → tool returns
+  `"OCR: file.png (WxH)\n\n{invisible}"` with no visible text
+- Reviewer sees empty output → replan → circular loop → stuck
+
+**Fix:** Replace both `strip()` checks with `_has_meaningful_content()`
+that counts printable characters (letters, numbers, punctuation) using
+`unicodedata.category`.
+
+```python
+import unicodedata
+
+def _has_meaningful_content(text: str, min_chars: int = 3) -> bool:
+    count = sum(1 for c in text if unicodedata.category(c)[0] in ('L', 'N', 'P'))
+    return count >= min_chars
+```
+
+**Threshold = 3:** Catches zero-width (0 chars), single punctuation
+(1 char), minimal noise (2 chars).  Rare false positive on 2-char
+words ("OK", "42") causes 3-second retry delay — acceptable tradeoff
+vs letting invisible text through.
+
+**Safety:**
+- CJK characters: category `Lo` → counted correctly
+- Accented text: base letter `L*` → counted correctly
+- Retry bounded: max 3 attempts, 3 seconds total backoff
+- Graceful degradation: returns "No text detected in image."
+- No behavioral change for valid OCR (3+ printable chars always pass)
+
+**Files:** `run.py`
+
+**Tasks:**
+- [ ] Add `_has_meaningful_content(text, min_chars=3)` helper
+- [ ] Replace `content.strip()` in `_call_gemini` retry (line ~232)
+      with `_has_meaningful_content(content)`
+- [ ] Replace `not text.strip()` in `do_extract` (line ~135) with
+      `not _has_meaningful_content(text)`
+- [ ] Unit test: zero-width chars (U+200B, U+FEFF) trigger retry
+- [ ] Unit test: "EXIT" (4 chars) passes without retry
+- [ ] Unit test: empty string returns "No text detected"
