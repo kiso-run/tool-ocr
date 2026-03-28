@@ -216,3 +216,23 @@ vs letting invisible text through.
 - [x] Unit test: zero-width chars (U+200B, U+FEFF) trigger retry
 - [x] Unit test: "EXIT" (4 chars) passes without retry
 - [x] Unit test: empty string returns "No text detected"
+
+---
+
+### M11 — Remove reasoning parameter (causes content=null) ✅
+
+**Problem:** `reasoning: {effort: "low"}` (added in M8) causes
+Gemini 2.5 Flash to put ALL output in the `reasoning` field and
+return `content: null`. The OCR tool reads only `content` → always
+empty → "No text detected." Confirmed via direct API testing.
+
+**Fix:** Remove `"reasoning": {"effort": "low"}` from payload.
+Without it, Gemini returns text correctly in `content`.
+
+**Reverts M8's reasoning parameter** — M8 was correct that thinking
+consumes tokens, but the side effect (content=null) is worse than
+the token cost.
+
+**Tasks:**
+- [x] Remove reasoning parameter from _call_gemini payload
+- [x] 49 tests passing
