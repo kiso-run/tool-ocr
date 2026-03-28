@@ -385,6 +385,64 @@ class TestCheckFileSize:
             _check_file_size(big)
 
 
+class TestReasoningFallback:
+    """M981: reasoning→content fallback in _call_gemini."""
+
+    def test_reasoning_fallback_used_when_content_empty(self, workspace, png_file, capsys):
+        """Content empty but reasoning has text → fallback fires, WARNING printed."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "", "reasoning": "Extracted text from reasoning"}}],
+        }
+        with (
+            patch("run._get_api_key", return_value="sk-test"),
+            patch("httpx.post", return_value=mock_response),
+        ):
+            result = do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
+        assert "Extracted text from reasoning" in result
+        err = capsys.readouterr().err
+        assert "reasoning-fallback" in err
+        assert "WARNING" in err
+
+    def test_reasoning_fallback_not_used_when_content_present(self, workspace, png_file, capsys):
+        """Content has text → reasoning fallback is not triggered."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "Normal content", "reasoning": "Should not be used"}}],
+        }
+        with (
+            patch("run._get_api_key", return_value="sk-test"),
+            patch("httpx.post", return_value=mock_response),
+        ):
+            result = do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
+        assert "Normal content" in result
+        assert "Should not be used" not in result
+        err = capsys.readouterr().err
+        assert "reasoning-fallback" not in err
+
+    def test_no_reasoning_parameter_in_payload(self, workspace, png_file):
+        """M981: payload must not include the 'reasoning' key."""
+        captured_payload = {}
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "choices": [{"message": {"content": "some text"}}],
+        }
+
+        def capture_call(*args, **kwargs):
+            captured_payload.update(kwargs.get("json", {}))
+            return mock_response
+
+        with (
+            patch("run._get_api_key", return_value="sk-test"),
+            patch("httpx.post", side_effect=capture_call),
+        ):
+            do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
+        assert "reasoning" not in captured_payload
+
+
 class TestFormatSize:
     def test_bytes(self):
         assert _format_size(500) == "500 B"

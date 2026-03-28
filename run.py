@@ -238,7 +238,17 @@ def _call_gemini(file_path: Path, api_key: str, prompt: str) -> str:
 
         result = response.json()
         choices = result.get("choices", [])
-        content = choices[0].get("message", {}).get("content", "") if choices else ""
+        message = choices[0].get("message", {}) if choices else {}
+        content = message.get("content", "") or ""
+
+        # Reasoning→content fallback: some models route text to "reasoning"
+        # instead of "content" when the reasoning parameter was used. Guard
+        # against that so extraction still works even if the API misbehaves.
+        if not _has_meaningful_content(content):
+            reasoning = message.get("reasoning", "") or ""
+            if _has_meaningful_content(reasoning):
+                print("[ocr-diag] WARNING: reasoning-fallback used — content empty, using reasoning field", file=sys.stderr)
+                content = reasoning
 
         if _has_meaningful_content(content):
             return content
