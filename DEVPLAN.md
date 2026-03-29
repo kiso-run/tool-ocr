@@ -10,7 +10,7 @@ stdin (JSON) → run.py → resolve image → base64 → Gemini chat (vision) �
 
 - **Entry point**: `run.py` reads JSON from stdin, dispatches to action handler
 - **Actions**: `extract` (default), `describe`, `info`, `list`
-- **API**: Gemini 2.5 Flash via OpenRouter `/chat/completions` (image as base64 inline content)
+- **API**: Gemini 2.0 Flash via OpenRouter `/chat/completions` (image as base64 inline content; model overridable via `KISO_TOOL_OCR_MODEL`)
 - **API key**: reuses `KISO_LLM_API_KEY` — zero extra config
 - **No system deps**: pure Python + httpx, no Tesseract/OpenCV/etc.
 - **Image dimensions**: parsed from PNG/JPEG headers (no PIL dependency)
@@ -219,20 +219,57 @@ vs letting invisible text through.
 
 ---
 
-### M11 — Remove reasoning parameter (causes content=null) ✅
+### M11 — Switch model to gemini-2.0-flash, add KISO_TOOL_OCR_MODEL env var ✅
 
-**Problem:** `reasoning: {effort: "low"}` (added in M8) causes
-Gemini 2.5 Flash to put ALL output in the `reasoning` field and
-return `content: null`. The OCR tool reads only `content` → always
-empty → "No text detected." Confirmed via direct API testing.
+**Problem:** `google/gemini-2.5-flash` has extended thinking (reasoning)
+active by default. Even with `"reasoning": {"effort": "low"}` (M8), the
+model uses ~20% of max_tokens for internal thinking, and sometimes routes
+all output to the `reasoning` field instead of `content`, leaving `content`
+empty. M8 was not a real fix — `effort: "low"` reduces thinking but does
+not eliminate it, and OpenRouter has no valid `"none"` value to disable it
+entirely. The result: OCR returns only the header line (no extracted text)
+for a significant fraction of calls, causing F17/F30 functional tests to
+fail.
 
-**Fix:** Remove `"reasoning": {"effort": "low"}` from payload.
-Without it, Gemini returns text correctly in `content`.
+**Root cause chain:**
+1. gemini-2.5-flash thinks by default → tokens consumed for reasoning
+2. `effort: "low"` (M8) reduces thinking budget but doesn't disable it
+3. On some calls, model routes extracted text to `reasoning` field →
+   `content` is empty → `_has_meaningful_content` fails → retry → same →
+   "No text detected in image."
 
-**Reverts M8's reasoning parameter** — M8 was correct that thinking
-consumes tokens, but the side effect (content=null) is worse than
-the token cost.
+**Fix — two parts:**
+
+1. **Switch model to `google/gemini-2.0-flash`**: this model does not have
+   built-in extended thinking. It is the direct predecessor of 2.5-flash for
+   multimodal/vision tasks, widely used for OCR, predictable `content` field
+   output. Cost is identical (~$0.10/1M tokens via OpenRouter).
+
+2. **Add `KISO_TOOL_OCR_MODEL` env var**: allows overriding the model at
+   deploy time without a code change. Default: `google/gemini-2.0-flash`.
+   Pattern mirrors the existing `KISO_TOOL_OCR_BASE_URL`.
+
+   ```python
+   model = os.environ.get("KISO_TOOL_OCR_MODEL", "google/gemini-2.0-flash")
+   ```
+
+**Remove the `"reasoning"` parameter** from the payload entirely — it is
+meaningless for gemini-2.0-flash (no built-in thinking) and was only a
+workaround for 2.5-flash's behavior.
+
+**Keep the reasoning→content fallback** added during debugging (current
+working copy). It is defensive code: harmless when content is populated,
+fires only when content is empty but reasoning has text. Logs a WARNING so
+the anomaly is visible.
+
+**Files:** `run.py`, `tests/test_run.py`, `DEVPLAN.md` architecture section
 
 **Tasks:**
-- [x] Remove reasoning parameter from _call_gemini payload
-- [x] 49 tests passing
+- [x] Change default model from `google/gemini-2.5-flash` to
+      `google/gemini-2.0-flash` in `_call_gemini`
+- [x] Read model from `KISO_TOOL_OCR_MODEL` env var with fallback
+- [x] Remove `"reasoning"` key from the Gemini payload
+- [x] Keep reasoning→content fallback (already in working copy)
+- [x] Update architecture section: model reference
+- [x] Unit test: `KISO_TOOL_OCR_MODEL` env var overrides default model
+- [x] Unit test: no `"reasoning"` key in payload when env var not set

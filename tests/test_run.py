@@ -552,3 +552,87 @@ class TestHasMeaningfulContent:
 
     def test_custom_threshold(self):
         assert _has_meaningful_content("OK", min_chars=2)
+
+
+# ---------------------------------------------------------------------------
+# M11: KISO_TOOL_OCR_MODEL env var + no reasoning key in payload
+# ---------------------------------------------------------------------------
+
+
+class TestM11ModelEnvVar:
+    """M11: model read from KISO_TOOL_OCR_MODEL env var, no reasoning in payload."""
+
+    def test_env_var_overrides_model(self, workspace, png_file):
+        """KISO_TOOL_OCR_MODEL overrides the default model sent to the API."""
+        captured_payload = {}
+
+        def fake_post(url, headers, json, timeout):
+            captured_payload.update(json)
+            mock = MagicMock()
+            mock.status_code = 200
+            mock.json.return_value = {
+                "choices": [{"message": {"content": "OCR text result"}}]
+            }
+            return mock
+
+        with (
+            patch("run._get_api_key", return_value="sk-test"),
+            patch("httpx.post", side_effect=fake_post),
+            patch.dict("os.environ", {"KISO_TOOL_OCR_MODEL": "google/gemini-custom-model"}),
+        ):
+            do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
+
+        assert captured_payload.get("model") == "google/gemini-custom-model", (
+            f"Expected custom model, got: {captured_payload.get('model')}"
+        )
+
+    def test_default_model_is_gemini_2_0_flash(self, workspace, png_file):
+        """Without KISO_TOOL_OCR_MODEL, default model is google/gemini-2.0-flash."""
+        captured_payload = {}
+
+        def fake_post(url, headers, json, timeout):
+            captured_payload.update(json)
+            mock = MagicMock()
+            mock.status_code = 200
+            mock.json.return_value = {
+                "choices": [{"message": {"content": "OCR text result"}}]
+            }
+            return mock
+
+        env_without_model = {
+            k: v for k, v in __import__("os").environ.items()
+            if k != "KISO_TOOL_OCR_MODEL"
+        }
+        with (
+            patch("run._get_api_key", return_value="sk-test"),
+            patch("httpx.post", side_effect=fake_post),
+            patch.dict("os.environ", env_without_model, clear=True),
+        ):
+            do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
+
+        assert captured_payload.get("model") == "google/gemini-2.0-flash", (
+            f"Expected gemini-2.0-flash, got: {captured_payload.get('model')}"
+        )
+
+    def test_no_reasoning_key_in_payload(self, workspace, png_file):
+        """No 'reasoning' key in the Gemini API payload (M11 requirement)."""
+        captured_payload = {}
+
+        def fake_post(url, headers, json, timeout):
+            captured_payload.update(json)
+            mock = MagicMock()
+            mock.status_code = 200
+            mock.json.return_value = {
+                "choices": [{"message": {"content": "OCR text result"}}]
+            }
+            return mock
+
+        with (
+            patch("run._get_api_key", return_value="sk-test"),
+            patch("httpx.post", side_effect=fake_post),
+        ):
+            do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
+
+        assert "reasoning" not in captured_payload, (
+            f"'reasoning' key found in payload: {list(captured_payload.keys())}"
+        )

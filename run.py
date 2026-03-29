@@ -6,7 +6,8 @@ Subprocess contract (same as all kiso tools):
   stderr: error description on failure
   exit 0: success, exit 1: failure
 
-Uses Gemini 2.5 Flash via OpenRouter's /chat/completions endpoint.
+Uses Gemini 2.0 Flash via OpenRouter's /chat/completions endpoint (default model;
+override with KISO_TOOL_OCR_MODEL env var).
 Images are sent as base64 inline content. Same API key as all kiso LLM calls.
 
 Cost: ~260 tokens per image (A4 page equivalent) → $0.00004/image at Gemini Flash pricing.
@@ -196,12 +197,13 @@ def _call_gemini(file_path: Path, api_key: str, prompt: str) -> str:
         "https://openrouter.ai/api/v1",
     )
     url = f"{base_url}/chat/completions"
+    model = os.environ.get("KISO_TOOL_OCR_MODEL", "google/gemini-2.0-flash")
 
     image_data = base64.b64encode(file_path.read_bytes()).decode()
     mime_type = mimetypes.guess_type(str(file_path))[0] or "image/png"
 
     payload = {
-        "model": "google/gemini-2.5-flash",
+        "model": model,
         "messages": [
             {
                 "role": "user",
