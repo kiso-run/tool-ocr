@@ -273,3 +273,26 @@ the anomaly is visible.
 - [x] Update architecture section: model reference
 - [x] Unit test: `KISO_TOOL_OCR_MODEL` env var overrides default model
 - [x] Unit test: no `"reasoning"` key in payload when env var not set
+
+---
+
+### M12 — Fix model ID: `google/gemini-2.0-flash` → `google/gemini-2.0-flash-001` ✅
+
+**Problem:** OpenRouter rejects `google/gemini-2.0-flash` with 400
+"not a valid model ID". The 2.0 generation requires the `-001` suffix
+on OpenRouter (unlike 2.5 which works without suffix).
+
+All OCR functional tests (F17, F28, F30, F36) fail 100% with:
+`Error: Gemini API error (400): google/gemini-2.0-flash is not a valid model ID`
+
+**Fix:** Change the default model from `google/gemini-2.0-flash` to
+`google/gemini-2.0-flash-001` in `_call_gemini()`.
+
+**Files:** `run.py`
+
+**Tasks:**
+- [x] Change default model in `_call_gemini` from `google/gemini-2.0-flash`
+      to `google/gemini-2.0-flash-001`
+- [x] Update DEVPLAN.md architecture section (model reference — display name
+      unchanged, only OpenRouter ID suffix added)
+- [x] Run unit tests — 55 passed

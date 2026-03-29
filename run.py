@@ -197,7 +197,7 @@ def _call_gemini(file_path: Path, api_key: str, prompt: str) -> str:
         "https://openrouter.ai/api/v1",
     )
     url = f"{base_url}/chat/completions"
-    model = os.environ.get("KISO_TOOL_OCR_MODEL", "google/gemini-2.0-flash")
+    model = os.environ.get("KISO_TOOL_OCR_MODEL", "google/gemini-2.0-flash-001")
 
     image_data = base64.b64encode(file_path.read_bytes()).decode()
     mime_type = mimetypes.guess_type(str(file_path))[0] or "image/png"

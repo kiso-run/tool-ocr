@@ -610,8 +610,8 @@ class TestM11ModelEnvVar:
         ):
             do_extract(str(workspace), {"file_path": "uploads/screenshot.png"})
 
-        assert captured_payload.get("model") == "google/gemini-2.0-flash", (
-            f"Expected gemini-2.0-flash, got: {captured_payload.get('model')}"
+        assert captured_payload.get("model") == "google/gemini-2.0-flash-001", (
+            f"Expected gemini-2.0-flash-001, got: {captured_payload.get('model')}"
         )
 
     def test_no_reasoning_key_in_payload(self, workspace, png_file):
