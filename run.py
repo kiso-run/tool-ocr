@@ -158,7 +158,7 @@ def do_extract(workspace: str, args: dict) -> str:
             f"Showing first {len(shown)} of {len(text)} chars."
         )
 
-    return f"{header}\n\n{text}"
+    return f"{header}\nExtracted text:\n\n{text}"
 
 
 def do_describe(workspace: str, args: dict) -> str:
