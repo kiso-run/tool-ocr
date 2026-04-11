@@ -1,4 +1,4 @@
-"""tool-ocr — extract text from images via Gemini multimodal OCR.
+"""wrapper-ocr — extract text from images via Gemini multimodal OCR.
 
 Subprocess contract (same as all kiso tools):
   stdin:  JSON {args, session, workspace, session_secrets, plan_outputs}
@@ -7,7 +7,7 @@ Subprocess contract (same as all kiso tools):
   exit 0: success, exit 1: failure
 
 Uses Gemini 2.0 Flash via OpenRouter's /chat/completions endpoint (default model;
-override with KISO_TOOL_OCR_MODEL env var).
+override with KISO_WRAPPER_OCR_MODEL env var).
 Images are sent as base64 inline content. Same API key as all kiso LLM calls.
 
 Cost: ~260 tokens per image (A4 page equivalent) → $0.00004/image at Gemini Flash pricing.
@@ -193,11 +193,11 @@ def _call_gemini(file_path: Path, api_key: str, prompt: str) -> str:
     import httpx
 
     base_url = os.environ.get(
-        "KISO_TOOL_OCR_BASE_URL",
+        "KISO_WRAPPER_OCR_BASE_URL",
         "https://openrouter.ai/api/v1",
     )
     url = f"{base_url}/chat/completions"
-    model = os.environ.get("KISO_TOOL_OCR_MODEL", "google/gemini-2.0-flash-001")
+    model = os.environ.get("KISO_WRAPPER_OCR_MODEL", "google/gemini-2.0-flash-001")
 
     image_data = base64.b64encode(file_path.read_bytes()).decode()
     mime_type = mimetypes.guess_type(str(file_path))[0] or "image/png"

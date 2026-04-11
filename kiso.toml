@@ -1,10 +1,10 @@
 [kiso]
-type = "tool"
+type = "wrapper"
 name = "ocr"
 version = "0.1.0"
 description = "Extract text from images — photos, screenshots, scanned documents, whiteboards"
 
-[kiso.tool]
+[kiso.wrapper]
 summary = "Extract text from images via OCR — photos, screenshots, receipts, whiteboards, handwriting"
 consumes = ["image"]
 usage_guide = """\
@@ -23,7 +23,7 @@ then use this tool on each page image.
 
 The file_path arg is relative to the session workspace (e.g. "uploads/photo.jpg")."""
 
-[kiso.tool.args]
+[kiso.wrapper.args]
 action    = { type = "string", required = false, description = "one of: extract (default), describe, info, list" }
 file_path = { type = "string", required = true, description = "path to image file, relative to workspace" }
 
