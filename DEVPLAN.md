@@ -1,4 +1,50 @@
-# tool-ocr — Development Plan
+# kiso-ocr-mcp — Development Plan
+
+## Status
+
+**Legacy wrapper era — closed.** The `tool-ocr` / `wrapper-ocr`
+subprocess-contract implementation has been replaced by a Model
+Context Protocol server.
+
+**Current era: MCP server.** Tracked in `kiso-run/core` as M1510.
+
+---
+
+## v0.1 — MCP rewrite (2026-04-18)
+
+- [x] Strip legacy wrapper files (`run.py`, `kiso.toml`, `deps.sh`,
+      `validator.py`); preserve `tests/fixtures/sample.png`
+- [x] New `pyproject.toml` with package name `kiso-ocr-mcp`,
+      entry point, MCP SDK dep
+- [x] `src/kiso_ocr_mcp/ocr_runner.py` — Gemini 2.0 Flash call via
+      OpenRouter, PNG/JPEG dimension parsing, empty-response retry
+      + reasoning-field fallback, 50 000-char output cap, 20 MB
+      inline-image limit
+- [x] `src/kiso_ocr_mcp/server.py` — FastMCP server with four tools:
+      `ocr_image`, `describe_image`, `image_info`, `doctor`
+- [x] 23 unit tests + 1 live test (fixture round-trip through
+      OpenRouter), all green
+- [x] README rewrite
+- [ ] Cut `v0.1.0` tag on GitHub *(user action)*
+
+**Design shifts from wrapper era**:
+
+- **Single key**: only `OPENROUTER_API_KEY`. Dropped the
+  `KISO_LLM_API_KEY` / `KISO_WRAPPER_OCR_MODEL` /
+  `KISO_WRAPPER_OCR_BASE_URL` indirection. Model and URL are
+  constants in the runner; future model overrides happen via
+  a tool arg if needed.
+- **Dropped the `list` action**: file discovery is the client's job.
+- **Split `extract` vs `describe`**: two distinct tools
+  (`ocr_image`, `describe_image`) instead of one tool with an
+  `action` arg — cleaner MCP semantics.
+- **Structured return**: all tools return JSON dicts with a
+  consistent `success`/`stderr` shape.
+
+The content below is the original wrapper-era devplan, kept for
+historical record.
+
+---
 
 Image OCR tool for kiso. Extracts text from photos, screenshots, receipts, whiteboards, and scanned documents using Gemini multimodal vision via OpenRouter.
 
