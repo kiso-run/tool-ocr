@@ -342,3 +342,65 @@ All OCR functional tests (F17, F28, F30, F36) fail 100% with:
 - [x] Update DEVPLAN.md architecture section (model reference — display name
       unchanged, only OpenRouter ID suffix added)
 - [x] Run unit tests — 55 passed
+
+---
+
+## v0.2 — Pluggable backend (local-first)
+
+**Motivation**. Current v0.1 routes every `ocr_image` / `describe_image` call through OpenRouter to Gemini. That works for stand-alone kiso usage, but two scenarios it doesn't serve:
+
+1. *Privacy-strict consumers* — agent platforms operating under "your perimeter, your data" promises (e.g. EU B2B with GDPR data-residency obligations) cannot send every uploaded image out of the appliance. Invoices, scanned contracts, screenshots of internal documents routinely contain PII (fiscal codes, IBANs, names, addresses); Presidio works on text, not on images, so the egress to Gemini is a privacy hole the consumer can't close downstream.
+2. *Cost-sensitive consumers* — at scale, per-call OCR cost adds up. A local backend is free per call.
+
+The fix is a pluggable backend — Tesseract local default, Gemini opt-in for quality boost when the consumer accepts data egress. Backward-compatible: existing consumers can stay on Gemini by setting `KISO_OCR_BACKEND=gemini` (will become non-default; current behavior preserved with one env var).
+
+### M1 — Tesseract backend ✅
+
+- [x] System dependency: `tesseract-ocr` binary (installed via system package manager — README documents the apt/brew commands; container-image bundling lives downstream in the consumer's appliance Dockerfile, not here)
+- [x] Implemented `_ocr_tesseract(image_path, langs)` runner — invokes `tesseract <input> stdout -l <langs>` via subprocess with 60s timeout
+- [ ] *Deferred:* image preprocessing pipeline (deskew, grayscale via ImageMagick) — Tesseract handles standard formats natively and the common case of clean business documents doesn't need it; revisit if a quality gap is observed on real workloads
+- [x] Unit tests cover: subprocess invocation with correct flags, nonzero exit raises, missing binary raises, default langs path, lang override via env, response includes `backend` field, output truncation, structured error for `describe_image` on tesseract backend
+- [x] `describe_image` returns structured error `{success: false, stderr: "describe_image requires backend=gemini; current backend=tesseract..."}` when `KISO_OCR_BACKEND=tesseract`
+
+### M2 — Pluggable backend selection: `tesseract` (default) | `gemini` ✅
+
+- [x] New env var `KISO_OCR_BACKEND` with values `tesseract` (new default) and `gemini` (opt-in, preserves v0.1 behaviour)
+- [x] Internal `_dispatch_image()` dispatcher resolves backend per-call; both `ocr_image` and `image_info` work on both backends
+- [x] Migration note in README — existing consumers set `KISO_OCR_BACKEND=gemini` to preserve v0.1 behaviour
+- [x] Unit tests for both backend paths with mocked subprocess (Tesseract) and mocked HTTP (Gemini)
+
+### M3 — Tesseract language pack management ✅
+
+- [x] README documents supported languages, default `ita+eng`, install commands
+- [x] Env var `KISO_OCR_TESSERACT_LANGS` to override (e.g. `ita+eng+deu`)
+- [x] `doctor()` reports installed Tesseract languages and warns when requested languages are missing
+
+### M4 — Doctor + observability ✅
+
+- [x] `doctor()` extended: reports active backend, validates relevant deps (Tesseract binary + language packs for `tesseract`, `OPENROUTER_API_KEY` for `gemini`); reports `tesseract_languages` list
+- [ ] *Deferred:* live smoke OCR on a bundled fixture inside `doctor()` — the configuration check is sufficient at health-check time; smoke tests live in the test suite
+- [x] Per-call return includes `backend` field so consumers can audit which backend served each call
+
+### M5 — Quality trade-off documentation ✅
+
+- [x] README "When to use which backend" section: Tesseract for clean printed text, Gemini for noisy/handwriting/description
+- [x] Cost note implicit in README (Tesseract free per call CPU-bound; Gemini paid)
+- [x] Privacy note in README (Tesseract local, no egress — rationale for being the new default)
+
+### Cut criteria for v0.2.0 ✅
+
+- [x] M1–M5 implemented and tested
+- [x] All existing v0.1 tests still green when `KISO_OCR_BACKEND=gemini` (preserved via `_force_gemini_backend` autouse fixture in test classes)
+- [x] README rewrite covers both backends and the migration note
+- [x] `pyproject.toml` version bumped to `0.2.0`
+- [ ] Cut `v0.2.0` tag on GitHub *— maintainer action: `git tag v0.2.0 && git push --tags`*
+
+**Effort estimate**: ~4–5 days total. **Actual: completed in one TDD session with 37/37 tests green.**
+
+---
+
+## Out of scope for v0.2
+
+- Other local OCR engines (PaddleOCR, EasyOCR, EasyOCR with GPU). Tesseract is the broadest-coverage, most stable, lowest-overhead option for business documents. Add others only if a consumer demonstrates a specific quality gap on their workload.
+- Built-in PDF→image conversion. The docreader server already handles PDFs; if a PDF page needs OCR, the consumer pipelines docreader output to ocr-mcp (or pre-converts pages to PNG). Adding pdftoppm to ocr-mcp would duplicate concerns.
+- LayoutLM / table extraction / form parsing. These are document-AI tasks, not OCR; out of scope for this server.

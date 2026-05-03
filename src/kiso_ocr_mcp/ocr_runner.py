@@ -1,8 +1,16 @@
-"""Image OCR core — Gemini multimodal call via OpenRouter.
+"""Image OCR core — pluggable backend (Tesseract local default, Gemini opt-in).
 
-Sends base64-encoded images to Gemini 2.0 Flash through OpenRouter's
-``chat/completions`` endpoint. Two prompts are supported: ``extract``
-(text only) and ``describe`` (scene description).
+Two backends are supported, selected by ``KISO_OCR_BACKEND``:
+
+- ``tesseract`` (default) — local OCR via the ``tesseract`` binary.
+  No API key, no data egress, runs in the appliance. Suitable for
+  privacy-strict consumers and the common case of clean printed text
+  (business documents, screenshots, scanned invoices). Default
+  languages ``ita+eng``, configurable via ``KISO_OCR_TESSERACT_LANGS``.
+- ``gemini`` — Gemini 2.0 Flash via OpenRouter. Higher quality on
+  noisy scans, handwriting, and image description (the only backend
+  for ``describe_image``); requires ``OPENROUTER_API_KEY``; uploads
+  the image to a third-party endpoint.
 
 Dimension detection for PNG and JPEG is dependency-free (parses file
 headers directly) so the server stays Pillow-free.
@@ -12,6 +20,7 @@ from __future__ import annotations
 import base64
 import mimetypes
 import os
+import subprocess
 import time
 import unicodedata
 from pathlib import Path
@@ -21,6 +30,9 @@ _MAX_OUTPUT_CHARS = 50_000
 _MAX_FILE_SIZE = 20 * 1024 * 1024  # Gemini inline image limit
 _EMPTY_RETRIES = 2
 _RETRY_BACKOFF = (1, 2)
+_TESSERACT_TIMEOUT_SECS = 60
+_DEFAULT_TESSERACT_LANGS = "ita+eng"
+_SUPPORTED_BACKENDS = {"tesseract", "gemini"}
 
 _IMAGE_EXTENSIONS = frozenset({
     ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tiff", ".tif",
@@ -42,11 +54,11 @@ _GEMINI_MODEL = "google/gemini-2.0-flash-001"
 
 
 def ocr_image(*, file_path: str) -> dict:
-    return _call_vision(file_path=file_path, prompt=_EXTRACT_PROMPT, mode="ocr")
+    return _dispatch_image(file_path=file_path, mode="ocr")
 
 
 def describe_image(*, file_path: str) -> dict:
-    return _call_vision(file_path=file_path, prompt=_DESCRIBE_PROMPT, mode="describe")
+    return _dispatch_image(file_path=file_path, mode="describe")
 
 
 def image_info(*, file_path: str) -> dict:
@@ -75,12 +87,40 @@ def image_info(*, file_path: str) -> dict:
 
 def check_health() -> dict:
     issues: list[str] = []
-    if not os.environ.get("OPENROUTER_API_KEY"):
-        issues.append("OPENROUTER_API_KEY is not set")
-    return {"healthy": not issues, "issues": issues}
+    backend = _backend()
+    result: dict = {
+        "healthy": False,
+        "issues": issues,
+        "backend": backend,
+    }
+    if backend not in _SUPPORTED_BACKENDS:
+        issues.append(
+            f"KISO_OCR_BACKEND={backend!r} is not supported "
+            f"(use one of: {sorted(_SUPPORTED_BACKENDS)})"
+        )
+        return result
+    if backend == "gemini":
+        if not os.environ.get("OPENROUTER_API_KEY"):
+            issues.append("OPENROUTER_API_KEY is not set")
+    elif backend == "tesseract":
+        try:
+            langs = _tesseract_installed_languages()
+            result["tesseract_languages"] = langs
+            requested = _tesseract_langs().split("+")
+            missing = [l for l in requested if l not in langs]
+            if missing:
+                issues.append(
+                    f"requested Tesseract language(s) not installed: {missing} "
+                    f"(installed: {langs}). Install via the system package manager "
+                    "or set KISO_OCR_TESSERACT_LANGS to languages you have."
+                )
+        except FileNotFoundError as exc:
+            issues.append(f"tesseract binary not found: {exc}")
+    result["healthy"] = not issues
+    return result
 
 
-def _call_vision(*, file_path: str, prompt: str, mode: str) -> dict:
+def _dispatch_image(*, file_path: str, mode: str) -> dict:
     path = Path(file_path).expanduser()
     if not path.is_file():
         return _fail(mode, f"file not found: {file_path}")
@@ -93,14 +133,34 @@ def _call_vision(*, file_path: str, prompt: str, mode: str) -> dict:
             f"file too large ({_format_size(size)}); limit is "
             f"{_format_size(_MAX_FILE_SIZE)}",
         )
-    api_key = os.environ.get("OPENROUTER_API_KEY")
-    if not api_key:
-        return _fail(mode, "OPENROUTER_API_KEY is not set")
+
+    backend = _backend()
+    if backend not in _SUPPORTED_BACKENDS:
+        return _fail(
+            mode,
+            f"KISO_OCR_BACKEND={backend!r} is not supported "
+            f"(use one of: {sorted(_SUPPORTED_BACKENDS)})",
+        )
+
+    if backend == "tesseract" and mode == "describe":
+        return _fail(
+            mode,
+            "describe_image requires backend=gemini; current backend=tesseract. "
+            "Tesseract is OCR-only.",
+            backend=backend,
+        )
 
     try:
-        text = _call_gemini(path, api_key, prompt)
+        if backend == "tesseract":
+            text = _ocr_tesseract(path, langs=_tesseract_langs())
+        else:
+            api_key = os.environ.get("OPENROUTER_API_KEY")
+            if not api_key:
+                return _fail(mode, "OPENROUTER_API_KEY is not set")
+            prompt = _EXTRACT_PROMPT if mode == "ocr" else _DESCRIBE_PROMPT
+            text = _call_gemini(path, api_key, prompt)
     except RuntimeError as exc:
-        return _fail(mode, str(exc), size=size, path=path)
+        return _fail(mode, str(exc), backend=backend)
 
     truncated = False
     if len(text) > _MAX_OUTPUT_CHARS:
@@ -118,14 +178,67 @@ def _call_vision(*, file_path: str, prompt: str, mode: str) -> dict:
         "width": dims[0] if dims else None,
         "height": dims[1] if dims else None,
         "truncated": truncated,
+        "backend": backend,
         "stderr": "",
     }
     if mode == "ocr":
         result["text"] = text
         result["has_text"] = _has_meaningful_content(text)
-    else:  # describe
+    else:
         result["description"] = text
     return result
+
+
+def _backend() -> str:
+    return os.environ.get("KISO_OCR_BACKEND", "tesseract").lower()
+
+
+def _tesseract_langs() -> str:
+    return os.environ.get("KISO_OCR_TESSERACT_LANGS", _DEFAULT_TESSERACT_LANGS)
+
+
+def _tesseract_installed_languages() -> list[str]:
+    """Return the list of Tesseract trained-data language codes installed
+    on this system. Raises ``FileNotFoundError`` if the binary is missing."""
+    completed = subprocess.run(
+        ["tesseract", "--list-langs"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    # `--list-langs` writes the list to stderr in classic Tesseract,
+    # to stdout in newer versions. Accept either.
+    output = completed.stdout + "\n" + completed.stderr
+    langs: list[str] = []
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("List of available"):
+            continue
+        langs.append(stripped)
+    return langs
+
+
+def _ocr_tesseract(file_path: Path, *, langs: str) -> str:
+    """Invoke the local ``tesseract`` binary on the image. Returns the
+    extracted text (raw stdout). Raises ``RuntimeError`` on failure."""
+    try:
+        completed = subprocess.run(
+            ["tesseract", str(file_path), "stdout", "-l", langs],
+            capture_output=True,
+            text=True,
+            timeout=_TESSERACT_TIMEOUT_SECS,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"tesseract binary not found in PATH: {exc}. "
+            "Install Tesseract OCR (e.g. `apt install tesseract-ocr tesseract-ocr-ita`) "
+            "or switch to KISO_OCR_BACKEND=gemini."
+        ) from exc
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"tesseract error ({completed.returncode}): {completed.stderr.strip()[:500]}"
+        )
+    return completed.stdout
 
 
 def _call_gemini(file_path: Path, api_key: str, prompt: str) -> str:
@@ -166,7 +279,6 @@ def _call_gemini(file_path: Path, api_key: str, prompt: str) -> str:
         choices = result.get("choices", [])
         message = choices[0].get("message", {}) if choices else {}
         content = message.get("content", "") or ""
-        # Reasoning→content fallback for models that route through reasoning field.
         if not _has_meaningful_content(content):
             reasoning = message.get("reasoning", "") or ""
             if _has_meaningful_content(reasoning):
@@ -225,7 +337,7 @@ def _format_size(size: int) -> str:
     return f"{size / (1024 * 1024):.1f} MB"
 
 
-def _fail(mode: str, message: str, **_extra) -> dict:
+def _fail(mode: str, message: str, *, backend: str | None = None, **_extra) -> dict:
     result = {
         "success": False,
         "format": None,
@@ -234,6 +346,8 @@ def _fail(mode: str, message: str, **_extra) -> dict:
         "truncated": False,
         "stderr": message,
     }
+    if backend is not None:
+        result["backend"] = backend
     if mode == "ocr":
         result["text"] = ""
         result["has_text"] = False

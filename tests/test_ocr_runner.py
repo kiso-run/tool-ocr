@@ -31,6 +31,13 @@ def png_file(tmp_path: Path) -> Path:
 
 
 class TestOcrImage:
+    """OCR via the Gemini backend (opt-in). Set KISO_OCR_BACKEND=gemini
+    to force this path; the new default is tesseract (see TestOcrImageTesseract)."""
+
+    @pytest.fixture(autouse=True)
+    def _force_gemini_backend(self, monkeypatch):
+        monkeypatch.setenv("KISO_OCR_BACKEND", "gemini")
+
     def test_missing_api_key_fails(self, monkeypatch, png_file):
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         result = ocr_image(file_path=str(png_file))
@@ -109,6 +116,12 @@ class TestOcrImage:
 
 
 class TestDescribeImage:
+    """describe_image is Gemini-only — Tesseract is OCR not vision."""
+
+    @pytest.fixture(autouse=True)
+    def _force_gemini_backend(self, monkeypatch):
+        monkeypatch.setenv("KISO_OCR_BACKEND", "gemini")
+
     def test_success_returns_description(self, monkeypatch, png_file):
         monkeypatch.setenv("OPENROUTER_API_KEY", "k")
         with patch(
@@ -171,14 +184,165 @@ class TestCallGeminiRetry:
 
 
 class TestCheckHealth:
-    def test_healthy(self, monkeypatch):
+    def test_gemini_backend_healthy(self, monkeypatch):
+        monkeypatch.setenv("KISO_OCR_BACKEND", "gemini")
         monkeypatch.setenv("OPENROUTER_API_KEY", "k")
         h = check_health()
         assert h["healthy"] is True
         assert h["issues"] == []
+        assert h["backend"] == "gemini"
 
-    def test_missing_key(self, monkeypatch):
+    def test_gemini_backend_missing_key(self, monkeypatch):
+        monkeypatch.setenv("KISO_OCR_BACKEND", "gemini")
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         h = check_health()
         assert h["healthy"] is False
         assert any("OPENROUTER_API_KEY" in i for i in h["issues"])
+
+    def test_default_backend_is_tesseract(self, monkeypatch):
+        """Privacy-first default: Tesseract local (no API key, no egress)."""
+        monkeypatch.delenv("KISO_OCR_BACKEND", raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        h = check_health()
+        assert h["backend"] == "tesseract"
+
+    def test_tesseract_backend_reports_languages(self, monkeypatch):
+        monkeypatch.setenv("KISO_OCR_BACKEND", "tesseract")
+        with patch(
+            "kiso_ocr_mcp.ocr_runner._tesseract_installed_languages",
+            return_value=["eng", "ita", "osd"],
+        ):
+            h = check_health()
+        assert h["backend"] == "tesseract"
+        assert "tesseract_languages" in h
+        assert "ita" in h["tesseract_languages"]
+
+    def test_unknown_backend_unhealthy(self, monkeypatch):
+        monkeypatch.setenv("KISO_OCR_BACKEND", "bogus")
+        h = check_health()
+        assert h["healthy"] is False
+        assert any("bogus" in i for i in h["issues"])
+
+    def test_tesseract_missing_binary_unhealthy(self, monkeypatch):
+        monkeypatch.setenv("KISO_OCR_BACKEND", "tesseract")
+        with patch(
+            "kiso_ocr_mcp.ocr_runner._tesseract_installed_languages",
+            side_effect=FileNotFoundError("tesseract not installed"),
+        ):
+            h = check_health()
+        assert h["healthy"] is False
+        assert any("tesseract" in i.lower() for i in h["issues"])
+
+
+class TestOcrImageTesseract:
+    """OCR via the Tesseract local backend (new default in v0.2)."""
+
+    @pytest.fixture(autouse=True)
+    def _force_tesseract_backend(self, monkeypatch):
+        monkeypatch.setenv("KISO_OCR_BACKEND", "tesseract")
+
+    def test_no_api_key_required(self, monkeypatch, png_file):
+        """Tesseract runs locally — no OPENROUTER_API_KEY needed."""
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        with patch(
+            "kiso_ocr_mcp.ocr_runner._ocr_tesseract",
+            return_value="Hello from Tesseract",
+        ):
+            result = ocr_image(file_path=str(png_file))
+        assert result["success"] is True
+        assert result["text"] == "Hello from Tesseract"
+
+    def test_uses_default_languages(self, monkeypatch, png_file):
+        monkeypatch.delenv("KISO_OCR_TESSERACT_LANGS", raising=False)
+        with patch(
+            "kiso_ocr_mcp.ocr_runner._ocr_tesseract",
+            return_value="text",
+        ) as run:
+            ocr_image(file_path=str(png_file))
+        # Default langs from M1 spec: ita+eng
+        called_langs = run.call_args.kwargs.get("langs") or run.call_args.args[1]
+        assert called_langs == "ita+eng"
+
+    def test_lang_override_via_env(self, monkeypatch, png_file):
+        monkeypatch.setenv("KISO_OCR_TESSERACT_LANGS", "deu+fra")
+        with patch(
+            "kiso_ocr_mcp.ocr_runner._ocr_tesseract",
+            return_value="text",
+        ) as run:
+            ocr_image(file_path=str(png_file))
+        called_langs = run.call_args.kwargs.get("langs") or run.call_args.args[1]
+        assert called_langs == "deu+fra"
+
+    def test_describe_image_returns_structured_error(self, monkeypatch, png_file):
+        """Tesseract is OCR-only; describe requires Gemini backend."""
+        result = describe_image(file_path=str(png_file))
+        assert result["success"] is False
+        assert "describe_image requires backend=gemini" in result["stderr"]
+        assert result["description"] == ""
+
+    def test_response_includes_backend_field(self, monkeypatch, png_file):
+        with patch(
+            "kiso_ocr_mcp.ocr_runner._ocr_tesseract",
+            return_value="text",
+        ):
+            result = ocr_image(file_path=str(png_file))
+        assert result.get("backend") == "tesseract"
+
+    def test_subprocess_error_surfaces(self, monkeypatch, png_file):
+        with patch(
+            "kiso_ocr_mcp.ocr_runner._ocr_tesseract",
+            side_effect=RuntimeError("tesseract: cannot read image"),
+        ):
+            result = ocr_image(file_path=str(png_file))
+        assert result["success"] is False
+        assert "tesseract" in result["stderr"].lower()
+
+    def test_truncates_long_output(self, monkeypatch, png_file):
+        long_text = "x" * 100_000
+        with patch(
+            "kiso_ocr_mcp.ocr_runner._ocr_tesseract",
+            return_value=long_text,
+        ):
+            result = ocr_image(file_path=str(png_file))
+        assert result["truncated"] is True
+        assert len(result["text"]) <= 50_000
+
+
+class TestOcrTesseractRunner:
+    """Direct unit tests for the _ocr_tesseract subprocess wrapper."""
+
+    def test_invokes_tesseract_binary(self, png_file):
+        from kiso_ocr_mcp import ocr_runner
+
+        completed = MagicMock(returncode=0, stdout="extracted text\n", stderr="")
+        with patch(
+            "kiso_ocr_mcp.ocr_runner.subprocess.run",
+            return_value=completed,
+        ) as run:
+            text = ocr_runner._ocr_tesseract(png_file, langs="ita+eng")
+        assert text == "extracted text\n"
+        cmd = run.call_args.args[0]
+        assert cmd[0] == "tesseract"
+        assert str(png_file) in cmd
+        assert "stdout" in cmd
+        assert "-l" in cmd
+        assert "ita+eng" in cmd
+
+    def test_nonzero_exit_raises(self, png_file):
+        from kiso_ocr_mcp import ocr_runner
+
+        completed = MagicMock(returncode=1, stdout="", stderr="boom")
+        with patch(
+            "kiso_ocr_mcp.ocr_runner.subprocess.run",
+            return_value=completed,
+        ), pytest.raises(RuntimeError, match="tesseract"):
+            ocr_runner._ocr_tesseract(png_file, langs="ita+eng")
+
+    def test_binary_missing_raises(self, png_file):
+        from kiso_ocr_mcp import ocr_runner
+
+        with patch(
+            "kiso_ocr_mcp.ocr_runner.subprocess.run",
+            side_effect=FileNotFoundError("tesseract not in PATH"),
+        ), pytest.raises(RuntimeError, match="tesseract"):
+            ocr_runner._ocr_tesseract(png_file, langs="ita+eng")
